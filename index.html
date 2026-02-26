@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="FaceVault" />
+<meta name="theme-color" content="#0a0a0f" />
+<title>FaceVault</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #13131a;
+  --surface2: #1c1c28;
+  --border: #2a2a3d;
+  --gold: #c9a84c;
+  --gold-light: #e8c97a;
+  --gold-dim: rgba(201,168,76,0.15);
+  --text: #e8e6de;
+  --text-dim: #7a7870;
+  --green: #4caf82;
+  --red: #cf6679;
+  --blue: #5b8dee;
+  --radius: 14px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overscroll-behavior: none; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  min-height: 100vh; min-height: 100dvh;
+  overflow-x: hidden;
+  user-select: none; -webkit-user-select: none;
+}
+
+/* Grain overlay */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-size: 200px;
+  pointer-events: none; z-index: 9999; opacity: 0.4;
+}
+
+/* ── Layout ── */
+.app-shell { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+header {
+  padding: 12px 20px;
+  padding-top: calc(12px + var(--safe-top));
+  background: rgba(10,10,15,0.95);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0; z-index: 100;
+}
+
+.logo { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-weight: 600; letter-spacing: 0.05em; color: var(--gold); }
+.logo span { color: var(--text-dim); font-weight: 300; }
+
+.status-pill { display: flex; align-items: center; gap: 7px; font-size: 10px; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); transition: background 0.3s; }
+.status-dot.ready  { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.status-dot.loading { background: var(--gold); box-shadow: 0 0 8px var(--gold); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.content {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 16px;
+  padding-bottom: calc(80px + var(--safe-bottom));
+}
+
+/* ── Bottom nav ── */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  padding-bottom: var(--safe-bottom);
+  background: rgba(13,13,20,0.97);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  display: flex; z-index: 200;
+}
+.bottom-nav-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px; padding: 10px 4px 12px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-dim); transition: color 0.2s;
+  min-height: 60px;
+}
+.bottom-nav-btn svg { width: 22px; height: 22px; transition: transform 0.2s; }
+.bottom-nav-btn span { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; }
+.bottom-nav-btn.active { color: var(--gold); }
+.bottom-nav-btn.active svg { transform: translateY(-2px); filter: drop-shadow(0 0 6px var(--gold)); }
+
+/* ── Panel ── */
+.panel { display: none; }
+.panel.active { display: block; animation: fadeUp 0.25s ease; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+.panel-title { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 300; margin-bottom: 4px; }
+.panel-sub { font-size: 10px; color: var(--text-dim); letter-spacing: 0.06em; margin-bottom: 20px; text-transform: uppercase; }
+
+/* ── Mode tabs ── */
+.mode-tabs { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface2); margin-bottom: 16px; }
+.mode-tab {
+  flex: 1; padding: 11px 8px;
+  font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; cursor: pointer; border: none; background: transparent;
+  color: var(--text-dim); transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+}
+.mode-tab:first-child { border-right: 1px solid var(--border); }
+.mode-tab.active { background: var(--gold-dim); color: var(--gold); }
+.mode-tab svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* ── Camera ── */
+.camera-wrap {
+  position: relative; width: 100%;
+  border-radius: var(--radius); overflow: hidden;
+  border: 1px solid var(--border); background: var(--surface);
+  aspect-ratio: 3/4; max-height: 55vh;
+}
+video, canvas.preview { width: 100%; height: 100%; object-fit: cover; display: block; }
+canvas.preview { position: absolute; top: 0; left: 0; }
+
+.camera-overlay {
+  position: absolute; inset: 0; pointer-events: none;
+  border: 2px solid transparent; border-radius: var(--radius); transition: border-color 0.3s;
+}
+.camera-overlay.detected { border-color: var(--gold); box-shadow: inset 0 0 40px rgba(201,168,76,0.1); }
+
+.camera-wrap::before, .camera-wrap::after {
+  content: ''; position: absolute; width: 18px; height: 18px;
+  border-color: var(--gold); border-style: solid; z-index: 10; opacity: 0.6;
+}
+.camera-wrap::before { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+.camera-wrap::after  { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+
+.face-badge {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(10,10,15,0.85); border: 1px solid var(--gold); border-radius: 4px;
+  padding: 4px 10px; font-size: 10px; letter-spacing: 0.1em;
+  color: var(--gold); text-transform: uppercase; z-index: 20; opacity: 0; transition: opacity 0.3s;
+}
+.face-badge.visible { opacity: 1; }
+
+.cam-flip {
+  position: absolute; bottom: 12px; right: 12px; z-index: 30;
+  background: rgba(10,10,15,0.7); border: 1px solid var(--border);
+  border-radius: 50%; width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text); transition: background 0.2s;
+}
+.cam-flip:hover { background: rgba(201,168,76,0.2); }
+.cam-flip svg { width: 18px; height: 18px; }
+
+/* ── Controls ── */
+.controls { display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+
+.btn {
+  padding: 13px 24px; border-radius: 10px;
+  font-family: 'DM Mono', monospace; font-size: 12px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  cursor: pointer; border: none; transition: all 0.18s;
+  min-height: 48px;
+}
+.btn-primary { background: var(--gold); color: #0a0a0f; font-weight: 500; }
+.btn-primary:active { background: var(--gold-light); transform: scale(0.97); }
+.btn-primary:disabled { opacity: 0.35; pointer-events: none; }
+.btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-ghost:active { background: var(--surface2); }
+.btn-blue { background: rgba(91,141,238,0.15); color: var(--blue); border: 1px solid rgba(91,141,238,0.3); }
+.btn-blue:active { background: rgba(91,141,238,0.25); }
+
+/* ── Multi-photo capture strip ── */
+.photo-strip-label {
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim);
+  margin-top: 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;
+}
+.photo-strip-label .strip-hint { font-size: 9px; color: var(--text-dim); opacity: 0.6; }
+.photo-strip {
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.photo-strip::-webkit-scrollbar { display: none; }
+.strip-slot {
+  flex-shrink: 0; width: 70px; height: 70px; border-radius: 8px;
+  border: 1.5px dashed var(--border); background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden; transition: border-color 0.2s;
+}
+.strip-slot.filled { border-color: var(--gold); border-style: solid; }
+.strip-slot img { width: 100%; height: 100%; object-fit: cover; }
+.strip-slot .slot-num {
+  font-size: 18px; color: var(--border);
+}
+.strip-slot .slot-del {
+  position: absolute; top: 2px; right: 2px;
+  background: rgba(10,10,15,0.8); border: none; color: var(--red);
+  border-radius: 3px; width: 18px; height: 18px; font-size: 10px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  z-index: 5;
+}
+.strip-progress {
+  font-size: 10px; color: var(--gold); margin-top: 6px; letter-spacing: 0.05em;
+}
+
+/* ── Upload zone ── */
+.upload-zone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; aspect-ratio: 3/4; max-height: 55vh;
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  background: var(--surface); cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative; overflow: hidden;
+}
+.upload-zone:active, .upload-zone.drag-over { border-color: var(--gold); background: var(--gold-dim); }
+.upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; z-index: 10; }
+.upload-icon { font-size: 44px; margin-bottom: 14px; opacity: 0.35; }
+.upload-label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+.upload-sublabel { font-size: 10px; color: var(--text-dim); opacity: 0.5; margin-top: 6px; text-align: center; padding: 0 20px; }
+.upload-preview { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; }
+.upload-preview.show { display: flex; }
+.upload-preview img { width: 100%; height: 100%; object-fit: cover; }
+.upload-preview-overlay { position: absolute; inset: 0; background: rgba(10,10,15,0.45); display: flex; align-items: flex-end; padding: 14px; }
+.upload-preview-label { font-size: 11px; color: var(--text); background: rgba(10,10,15,0.8); padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Name input ── */
+.input-wrap { display: flex; gap: 10px; margin-top: 14px; }
+input[type=text] {
+  flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-family: 'DM Mono', monospace; font-size: 14px;
+  padding: 13px 16px; outline: none; transition: border-color 0.2s; min-height: 48px;
+}
+input[type=text]:focus { border-color: var(--gold); }
+input[type=text]::placeholder { color: var(--text-dim); }
+
+/* ── Duplicate warning ── */
+.duplicate-warn {
+  margin-top: 10px; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid rgba(201,168,76,0.4); background: rgba(201,168,76,0.08);
+  font-size: 11px; color: var(--gold); letter-spacing: 0.04em; display: none;
+  animation: fadeUp 0.2s ease;
+}
+.duplicate-warn.show { display: block; }
+.duplicate-warn strong { color: var(--gold-light); }
+
+/* ── Result card ── */
+.result-card {
+  margin-top: 18px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface); overflow: hidden; display: none;
+  animation: fadeUp 0.3s ease;
+}
+.result-card.show { display: block; }
+.result-header { padding: 11px 18px; background: var(--surface2); border-bottom: 1px solid var(--border); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+.result-body { display: flex; align-items: center; gap: 16px; padding: 16px; }
+.result-photo { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; border: 2px solid var(--gold); flex-shrink: 0; }
+.result-info h2 { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 600; }
+.result-info p  { color: var(--text-dim); font-size: 10px; margin-top: 4px; line-height: 1.5; }
+
+/* Distance meter */
+.distance-meter { margin-top: 10px; }
+.distance-meter-label { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 5px; display: flex; justify-content: space-between; }
+.distance-bar-track { height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+.distance-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+
+.match-score {
+  display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 4px;
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.match-score.high { background: rgba(76,175,130,0.15); color: var(--green); border: 1px solid var(--green); }
+.match-score.low  { background: rgba(201,168,76,0.15);  color: var(--gold);  border: 1px solid var(--gold);  }
+.match-score.none { background: rgba(207,102,121,0.15); color: var(--red);   border: 1px solid var(--red);   }
+
+/* ── Gallery ── */
+.gallery-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.gallery-title { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 300; }
+.gallery-controls { display: flex; align-items: center; gap: 10px; }
+.count-badge { font-size: 11px; color: var(--text-dim); }
+.btn-sm {
+  padding: 7px 14px; font-size: 10px; border-radius: 8px;
+  font-family: 'DM Mono', monospace; letter-spacing: 0.08em; text-transform: uppercase;
+  cursor: pointer; border: 1px solid var(--red); background: transparent; color: var(--red);
+  transition: all 0.2s; min-height: 36px;
+}
+.btn-sm:active { background: rgba(207,102,121,0.15); }
+
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.gallery-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color 0.2s; position: relative; }
+.gallery-card:active { border-color: var(--gold); }
+.gallery-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.gallery-card-del { position: absolute; top: 7px; right: 7px; background: rgba(10,10,15,0.75); border: none; border-radius: 4px; color: var(--red); cursor: pointer; padding: 5px 7px; font-size: 13px; min-height: 32px; min-width: 32px; }
+.gallery-card-info { padding: 10px; border-top: 1px solid var(--border); }
+.gallery-card-name { font-family: 'Cormorant Garamond', serif; font-size: 15px; font-weight: 600; }
+.gallery-card-date { font-size: 9px; color: var(--text-dim); margin-top: 2px; }
+.gallery-card-shots { font-size: 9px; color: var(--blue); margin-top: 3px; letter-spacing: 0.04em; }
+
+.empty-state { text-align: center; padding: 60px 24px; color: var(--text-dim); grid-column: 1/-1; }
+.empty-state .icon { font-size: 44px; margin-bottom: 14px; opacity: 0.35; }
+.empty-state p { font-size: 12px; line-height: 1.8; }
+
+/* ── DB badge ── */
+.db-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-radius: 8px;
+  border: 1px solid rgba(76,175,130,0.25); background: rgba(76,175,130,0.05);
+  font-size: 10px; color: var(--text-dim); letter-spacing: 0.04em; margin-bottom: 16px; width: 100%;
+}
+.db-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); flex-shrink: 0; }
+.db-badge strong { color: var(--green); }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: calc(70px + var(--safe-bottom) + 8px); left: 16px; right: 16px;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 18px; font-size: 12px; letter-spacing: 0.05em;
+  z-index: 9000; text-align: center;
+  transform: translateY(20px); opacity: 0;
+  transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s;
+  pointer-events: none;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.success { border-color: var(--green); color: var(--green); }
+.toast.error   { border-color: var(--red);   color: var(--red);   }
+.toast.info    { border-color: var(--gold);   color: var(--gold);  }
+
+/* ── Loading screen ── */
+#loading-screen {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 10000; gap: 24px; transition: opacity 0.5s; padding: 32px;
+}
+.loading-logo { font-family: 'Cormorant Garamond', serif; font-size: 44px; font-weight: 300; color: var(--gold); letter-spacing: 0.1em; }
+.loading-sub { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-dim); margin-top: -16px; }
+.loading-bar-wrap { width: 200px; height: 2px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.loading-bar { height: 100%; background: var(--gold); width: 0%; transition: width 0.4s ease; box-shadow: 0 0 12px var(--gold); }
+.loading-msg { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); text-align: center; }
+
+/* ── Install banner ── */
+#install-banner {
+  display: none; position: fixed; top: 0; left: 0; right: 0;
+  background: var(--gold); color: #0a0a0f;
+  padding: 12px 16px; padding-top: calc(12px + var(--safe-top));
+  font-size: 12px; letter-spacing: 0.05em;
+  z-index: 9500; text-align: center;
+  gap: 12px; align-items: center; justify-content: center;
+}
+#install-banner.show { display: flex; }
+#install-banner button { background: #0a0a0f; color: var(--gold); border: none; border-radius: 6px; padding: 6px 14px; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="loading-logo">FaceVault</div>
+  <div class="loading-sub">Person Recognition</div>
+  <div class="loading-bar-wrap"><div class="loading-bar" id="load-bar"></div></div>
+  <div class="loading-msg" id="load-msg">Opening database…</div>
+</div>
+
+<div id="install-banner">
+  <span>Install FaceVault as an app</span>
+  <button onclick="installApp()">Install</button>
+  <button onclick="dismissInstall()" style="background:transparent;color:#0a0a0f;border:none;font-size:18px;padding:0 4px;cursor:pointer;">✕</button>
+</div>
+
+<div class="app-shell">
+  <header>
+    <div class="logo">Face<span>Vault</span></div>
+    <div class="status-pill">
+      <div class="status-dot loading" id="status-dot"></div>
+      <span id="status-text">Loading</span>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- REGISTER -->
+    <div class="panel active" id="panel-register">
+      <h1 class="panel-title">Register</h1>
+      <p class="panel-sub">Capture multiple angles → name → save</p>
+      <div class="db-badge"><strong>IndexedDB</strong> — stored locally, no expiry, works offline</div>
+
+      <div class="mode-tabs">
+        <button class="mode-tab active" id="reg-tab-camera" onclick="setRegMode('camera')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Camera
+        </button>
+        <button class="mode-tab" id="reg-tab-upload" onclick="setRegMode('upload')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+          Upload
+        </button>
+      </div>
+
+      <!-- Camera mode -->
+      <div id="reg-camera-mode">
+        <div class="camera-wrap">
+          <video id="reg-video" autoplay playsinline muted></video>
+          <canvas id="reg-canvas" class="preview"></canvas>
+          <div class="camera-overlay" id="reg-overlay"></div>
+          <div class="face-badge" id="reg-badge">Face Detected</div>
+          <button class="cam-flip" onclick="flipCamera('reg')" title="Flip camera">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+          </button>
+        </div>
+        <div class="controls">
+          <button class="btn btn-ghost" onclick="startCamera('reg')">Start Camera</button>
+          <button class="btn btn-primary" id="reg-capture-btn" onclick="captureShot()" disabled>Capture</button>
+        </div>
+
+        <!-- Multi-shot strip -->
+        <div class="photo-strip-label">
+          <span>Captured shots</span>
+          <span class="strip-hint">2–5 angles for best accuracy</span>
+        </div>
+        <div class="photo-strip" id="reg-strip">
+          <div class="strip-slot" id="slot-0"><span class="slot-num">1</span></div>
+          <div class="strip-slot" id="slot-1"><span class="slot-num">2</span></div>
+          <div class="strip-slot" id="slot-2"><span class="slot-num">3</span></div>
+          <div class="strip-slot" id="slot-3"><span class="slot-num">4</span></div>
+          <div class="strip-slot" id="slot-4"><span class="slot-num">5</span></div>
+        </div>
+        <div class="strip-progress" id="strip-progress"></div>
+      </div>
+
+      <!-- Upload mode -->
+      <div id="reg-upload-mode" style="display:none">
+        <div class="upload-zone" id="reg-upload-zone"
+             ondragover="handleDragOver(event,'reg-upload-zone')"
+             ondragleave="handleDragLeave('reg-upload-zone')"
+             ondrop="handleDrop(event,'reg')">
+          <input type="file" id="reg-file-input" accept="image/*" onchange="handleFileSelect(event,'reg')" />
+          <div class="upload-icon">📷</div>
+          <div class="upload-label">Tap to select photo</div>
+          <div class="upload-sublabel">From camera roll, files, or drag & drop</div>
+          <div class="upload-preview" id="reg-upload-preview">
+            <img id="reg-upload-img" src="" alt="preview" />
+            <div class="upload-preview-overlay">
+              <span class="upload-preview-label" id="reg-upload-filename">photo.jpg</span>
+            </div>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="btn btn-ghost" onclick="clearUpload('reg')">Clear</button>
+          <button class="btn btn-primary" id="reg-analyze-btn" onclick="analyzeUpload()" disabled>Analyze Face</button>
+        </div>
+      </div>
+
+      <!-- Name input & duplicate warning -->
+      <div class="duplicate-warn" id="duplicate-warn"></div>
+      <div class="input-wrap" id="reg-name-wrap" style="display:none">
+        <input type="text" id="reg-name-input" placeholder="Enter person's name…" maxlength="60"
+               onkeydown="if(event.key==='Enter') savePerson()" />
+        <button class="btn btn-primary" onclick="savePerson()">Save</button>
+      </div>
+    </div>
+
+    <!-- IDENTIFY -->
+    <div class="panel" id="panel-recognize">
+      <h1 class="panel-title">Identify</h1>
+      <p class="panel-sub">Camera or upload → match against vault</p>
+
+      <div class="mode-tabs">
+        <button class="mode-tab active" id="rec-tab-camera" onclick="setRecMode('camera')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Camera
+        </button>
+        <button class="mode-tab" id="rec-tab-upload" onclick="setRecMode('upload')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+          Upload
+        </button>
+      </div>
+
+      <div id="rec-camera-mode">
+        <div class="camera-wrap">
+          <video id="rec-video" autoplay playsinline muted></video>
+          <canvas id="rec-canvas" class="preview"></canvas>
+          <div class="camera-overlay" id="rec-overlay"></div>
+          <div class="face-badge" id="rec-badge">Face Detected</div>
+          <button class="cam-flip" onclick="flipCamera('rec')" title="Flip camera">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+          </button>
+        </div>
+        <div class="controls">
+          <button class="btn btn-ghost" onclick="startCamera('rec')">Start Camera</button>
+          <button class="btn btn-primary" id="rec-identify-btn" onclick="identifyPerson()" disabled>Identify</button>
+        </div>
+      </div>
+
+      <div id="rec-upload-mode" style="display:none">
+        <div class="upload-zone" id="rec-upload-zone"
+             ondragover="handleDragOver(event,'rec-upload-zone')"
+             ondragleave="handleDragLeave('rec-upload-zone')"
+             ondrop="handleDrop(event,'rec')">
+          <input type="file" id="rec-file-input" accept="image/*" onchange="handleFileSelect(event,'rec')" />
+          <div class="upload-icon">📷</div>
+          <div class="upload-label">Tap to select photo</div>
+          <div class="upload-sublabel">From camera roll, files, or drag & drop</div>
+          <div class="upload-preview" id="rec-upload-preview">
+            <img id="rec-upload-img" src="" alt="preview" />
+            <div class="upload-preview-overlay">
+              <span class="upload-preview-label" id="rec-upload-filename">photo.jpg</span>
+            </div>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="btn btn-ghost" onclick="clearUpload('rec')">Clear</button>
+          <button class="btn btn-primary" id="rec-upload-identify-btn" onclick="identifyFromUpload()" disabled>Identify</button>
+        </div>
+      </div>
+
+      <div class="result-card" id="result-card">
+        <div class="result-header" id="result-header">Match Found</div>
+        <div class="result-body">
+          <img id="result-photo" class="result-photo" src="" alt="stored photo" />
+          <div class="result-info">
+            <h2 id="result-name">—</h2>
+            <p id="result-meta">—</p>
+            <span class="match-score" id="result-badge">—</span>
+            <div class="distance-meter" id="distance-meter" style="display:none">
+              <div class="distance-meter-label">
+                <span>Similarity</span>
+                <span id="distance-pct">—</span>
+              </div>
+              <div class="distance-bar-track">
+                <div class="distance-bar-fill" id="distance-bar" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VAULT -->
+    <div class="panel" id="panel-gallery">
+      <div class="gallery-header">
+        <h1 class="gallery-title">Vault</h1>
+        <div class="gallery-controls">
+          <span class="count-badge" id="gallery-count">0 persons</span>
+          <button class="btn-sm" onclick="clearAllPersons()">Clear All</button>
+        </div>
+      </div>
+      <div class="gallery-grid" id="gallery-grid"></div>
+    </div>
+
+  </div><!-- /content -->
+
+  <nav class="bottom-nav">
+    <button class="bottom-nav-btn active" id="nav-register" onclick="switchPanel('register')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><line x1="12" y1="15" x2="12" y2="21"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+      <span>Register</span>
+    </button>
+    <button class="bottom-nav-btn" id="nav-recognize" onclick="switchPanel('recognize')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><circle cx="11" cy="9" r="2"/><path d="M7 18c0-2.5 1.8-4 4-4s4 1.5 4 4"/></svg>
+      <span>Identify</span>
+    </button>
+    <button class="bottom-nav-btn" id="nav-gallery" onclick="switchPanel('gallery')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>Vault</span>
+    </button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script>
+// ── IndexedDB ─────────────────────────────────────────────────────
+const DB_NAME = 'FaceVaultDB2', DB_VER = 1, STORE = 'persons';
+let db = null;
+
+function openDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, DB_VER);
+    r.onupgradeneeded = e => {
+      if (!e.target.result.objectStoreNames.contains(STORE))
+        e.target.result.createObjectStore(STORE, { keyPath: 'id' });
+    };
+    r.onsuccess = e => { db = e.target.result; res(); };
+    r.onerror   = e => rej(e.target.error);
+  });
+}
+const tx       = m  => db.transaction(STORE, m).objectStore(STORE);
+const dbGetAll = () => new Promise((r,j) => { const q=tx('readonly').getAll();   q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); });
+const dbPut    = o  => new Promise((r,j) => { const q=tx('readwrite').put(o);    q.onsuccess=()=>r();         q.onerror=()=>j(q.error); });
+const dbDelete = id => new Promise((r,j) => { const q=tx('readwrite').delete(id);q.onsuccess=()=>r();         q.onerror=()=>j(q.error); });
+const dbClear  = () => new Promise((r,j) => { const q=tx('readwrite').clear();   q.onsuccess=()=>r();         q.onerror=()=>j(q.error); });
+
+// ── State ─────────────────────────────────────────────────────────
+const MODEL_URL   = 'https://justadudewhohacks.github.io/face-api.js/models';
+const MAX_SHOTS   = 5;
+const MATCH_THRESHOLD = 0.5;   // distance threshold for unknown
+const DUP_THRESHOLD   = 0.4;   // distance to warn of duplicate
+
+let modelsReady = false;
+let capturedShots = [];         // [{descriptor, photoDataUrl}]
+let detectionLoops = {};
+let regUploadDataUrl = null, recUploadDataUrl = null;
+let facingModes  = { reg: 'user', rec: 'user' };
+let activeStreams = {};
+let currentPanel = 'register';
+
+// ── Init ──────────────────────────────────────────────────────────
+async function init() {
+  const bar = document.getElementById('load-bar');
+  const msg = document.getElementById('load-msg');
+  const steps = [
+    { pct: 10, label: 'Opening database…',        fn: openDB },
+    { pct: 35, label: 'Loading face detector…',   fn: () => faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL) },
+    { pct: 65, label: 'Loading landmark model…',  fn: () => faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL) },
+    { pct: 90, label: 'Loading recognition net…', fn: () => faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL) },
+  ];
+  for (const s of steps) {
+    msg.textContent = s.label; bar.style.width = s.pct + '%';
+    await s.fn();
+  }
+  bar.style.width = '100%'; msg.textContent = 'Ready!';
+  modelsReady = true;
+  setTimeout(() => {
+    const ls = document.getElementById('loading-screen');
+    ls.style.opacity = '0';
+    setTimeout(() => ls.style.display = 'none', 500);
+  }, 300);
+  document.getElementById('status-dot').className    = 'status-dot ready';
+  document.getElementById('status-text').textContent = 'Ready';
+}
+
+// ── Visibility — pause loops when tab is hidden ───────────────────
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) pauseAllLoops();
+  else if (!document.hidden && activeStreams[currentPanel === 'register' ? 'reg' : 'rec']) {
+    startDetectionLoop(currentPanel === 'register' ? 'reg' : 'rec');
+  }
+});
+
+function pauseAllLoops() {
+  Object.keys(detectionLoops).forEach(mode => {
+    if (detectionLoops[mode]) { cancelAnimationFrame(detectionLoops[mode]); detectionLoops[mode] = null; }
+  });
+}
+
+// ── Camera ────────────────────────────────────────────────────────
+async function startCamera(mode) {
+  if (activeStreams[mode]) {
+    activeStreams[mode].getTracks().forEach(t => t.stop());
+    activeStreams[mode] = null;
+  }
+  if (detectionLoops[mode]) { cancelAnimationFrame(detectionLoops[mode]); detectionLoops[mode] = null; }
+
+  const video = document.getElementById(mode + '-video');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facingModes[mode], width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    });
+    activeStreams[mode] = stream;
+    video.srcObject = stream;
+    await new Promise(r => (video.onloadedmetadata = r));
+    startDetectionLoop(mode);
+    document.getElementById(mode === 'reg' ? 'reg-capture-btn' : 'rec-identify-btn').disabled = false;
+    showToast('Camera started', 'success');
+  } catch(e) {
+    showToast('Camera error: ' + (e.message || 'access denied'), 'error');
+  }
+}
+
+async function flipCamera(mode) {
+  facingModes[mode] = facingModes[mode] === 'user' ? 'environment' : 'user';
+  const video = document.getElementById(mode + '-video');
+  if (video.srcObject) await startCamera(mode);
+}
+
+function stopCamera(mode) {
+  if (activeStreams[mode]) {
+    activeStreams[mode].getTracks().forEach(t => t.stop());
+    activeStreams[mode] = null;
+  }
+  if (detectionLoops[mode]) { cancelAnimationFrame(detectionLoops[mode]); detectionLoops[mode] = null; }
+  const video = document.getElementById(mode + '-video');
+  if (video) video.srcObject = null;
+}
+
+function startDetectionLoop(mode) {
+  const video   = document.getElementById(mode + '-video');
+  const canvas  = document.getElementById(mode + '-canvas');
+  const overlay = document.getElementById(mode + '-overlay');
+  const badge   = document.getElementById(mode + '-badge');
+
+  async function loop() {
+    if (!modelsReady || video.paused || video.ended || !video.srcObject || document.hidden) {
+      detectionLoops[mode] = requestAnimationFrame(loop); return;
+    }
+    const size = { width: video.videoWidth || 640, height: video.videoHeight || 480 };
+    faceapi.matchDimensions(canvas, size);
+    const dets = await faceapi
+      .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+      .withFaceLandmarks(true);
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (dets.length > 0) {
+      faceapi.resizeResults(dets, size).forEach(d => {
+        const b = d.detection.box;
+        ctx.strokeStyle = '#c9a84c'; ctx.lineWidth = 2;
+        ctx.strokeRect(b.x, b.y, b.width, b.height);
+        const cs = 14; ctx.strokeStyle = '#e8c97a'; ctx.lineWidth = 3;
+        [[b.x,b.y,cs,cs],[b.x+b.width,b.y,-cs,cs],[b.x,b.y+b.height,cs,-cs],[b.x+b.width,b.y+b.height,-cs,-cs]]
+          .forEach(([cx,cy,dx,dy]) => {
+            ctx.beginPath(); ctx.moveTo(cx+dx,cy); ctx.lineTo(cx,cy); ctx.lineTo(cx,cy+dy); ctx.stroke();
+          });
+      });
+      overlay.classList.add('detected'); badge.classList.add('visible');
+    } else {
+      overlay.classList.remove('detected'); badge.classList.remove('visible');
+    }
+    detectionLoops[mode] = requestAnimationFrame(loop);
+  }
+  detectionLoops[mode] = requestAnimationFrame(loop);
+}
+
+// ── Multi-shot capture ────────────────────────────────────────────
+function updateStrip() {
+  const progress = document.getElementById('strip-progress');
+  for (let i = 0; i < MAX_SHOTS; i++) {
+    const slot = document.getElementById('slot-' + i);
+    if (capturedShots[i]) {
+      slot.innerHTML = `<img src="${capturedShots[i].photoDataUrl}" /><button class="slot-del" onclick="removeShot(${i})">✕</button>`;
+      slot.classList.add('filled');
+    } else {
+      slot.innerHTML = `<span class="slot-num">${i+1}</span>`;
+      slot.classList.remove('filled');
+    }
+  }
+  const n = capturedShots.length;
+  if (n === 0) {
+    progress.textContent = '';
+    document.getElementById('reg-name-wrap').style.display = 'none';
+    document.getElementById('duplicate-warn').classList.remove('show');
+  } else {
+    progress.textContent = `${n} shot${n>1?'s':''} captured${n >= 2 ? ' — ready to save' : ' — capture more for better accuracy'}`;
+    if (n >= 2) {
+      document.getElementById('reg-name-wrap').style.display = 'flex';
+      document.getElementById('reg-name-input').focus();
+    }
+  }
+}
+
+function removeShot(i) {
+  capturedShots.splice(i, 1);
+  updateStrip();
+}
+
+async function captureShot() {
+  if (capturedShots.length >= MAX_SHOTS) { showToast(`Maximum ${MAX_SHOTS} shots reached`, 'info'); return; }
+  const video = document.getElementById('reg-video');
+  if (!video.srcObject) { showToast('Start the camera first', 'info'); return; }
+
+  const result = await faceapi
+    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416 }))
+    .withFaceLandmarks(true).withFaceDescriptor();
+  if (!result) { showToast('No face detected — center your face', 'error'); return; }
+
+  // Crop face photo
+  const b = result.detection.box, pad = 40;
+  const tmp = document.createElement('canvas');
+  tmp.width  = Math.min(b.width+pad*2,  video.videoWidth);
+  tmp.height = Math.min(b.height+pad*2, video.videoHeight);
+  tmp.getContext('2d').drawImage(video, Math.max(0,b.x-pad), Math.max(0,b.y-pad), tmp.width, tmp.height, 0, 0, tmp.width, tmp.height);
+  const photoDataUrl = tmp.toDataURL('image/jpeg', 0.85);
+
+  capturedShots.push({ descriptor: Array.from(result.descriptor), photoDataUrl });
+  updateStrip();
+  showToast(`Shot ${capturedShots.length} captured!`, 'success');
+}
+
+// ── Duplicate check ───────────────────────────────────────────────
+async function checkDuplicate(descriptors) {
+  const all = await dbGetAll();
+  if (!all.length) return null;
+  let bestPerson = null, bestDist = Infinity;
+  for (const p of all) {
+    const pDescriptors = p.descriptors.map(d => new Float32Array(d));
+    for (const qDesc of descriptors) {
+      const minDist = Math.min(...pDescriptors.map(d => faceapi.euclideanDistance(qDesc, d)));
+      if (minDist < bestDist) { bestDist = minDist; bestPerson = p; }
+    }
+  }
+  return bestDist < DUP_THRESHOLD ? { person: bestPerson, dist: bestDist } : null;
+}
+
+// ── Save person ───────────────────────────────────────────────────
+async function savePerson() {
+  const name = document.getElementById('reg-name-input').value.trim();
+  if (!name)                      { showToast('Please enter a name', 'error');        return; }
+  if (capturedShots.length === 0) { showToast('Capture at least one shot', 'error'); return; }
+
+  // Duplicate check
+  const dup = await checkDuplicate(capturedShots.map(s => s.descriptor));
+  const warn = document.getElementById('duplicate-warn');
+  if (dup) {
+    warn.innerHTML = `⚠ This face looks similar to <strong>${dup.person.name}</strong> already in the vault (${Math.round((1-dup.dist)*100)}% match). Save anyway?`;
+    warn.classList.add('show');
+    // Let user decide — they already clicked Save so we proceed after showing warning once
+    // Second click will bypass
+    if (!warn.dataset.confirmed) { warn.dataset.confirmed = '1'; return; }
+  }
+  warn.classList.remove('show');
+  warn.dataset.confirmed = '';
+
+  const descriptors  = capturedShots.map(s => s.descriptor);
+  const photoDataUrl = capturedShots[0].photoDataUrl; // primary photo for display
+
+  await dbPut({
+    id: Date.now().toString(), name,
+    photoDataUrl,
+    descriptors,               // store ALL descriptors
+    shotCount: capturedShots.length,
+    date: new Date().toLocaleDateString()
+  });
+
+  showToast(`✓ ${name} saved with ${capturedShots.length} shot${capturedShots.length>1?'s':''}`, 'success');
+  document.getElementById('reg-name-input').value = '';
+  capturedShots = [];
+  updateStrip();
+}
+
+// ── Matching (FaceMatcher with multi-descriptor) ──────────────────
+async function findBestMatch(queryDescriptor) {
+  const all = await dbGetAll();
+  if (!all.length) return { person: null, dist: Infinity };
+
+  // Build labeled descriptors — one LabeledFaceDescriptors per person with ALL their shots
+  const labeled = all.map(p => new faceapi.LabeledFaceDescriptors(
+    p.id,
+    (p.descriptors || [p.descriptor]).map(d => new Float32Array(d))
+  ));
+  const matcher = new faceapi.FaceMatcher(labeled, MATCH_THRESHOLD);
+  const match   = matcher.findBestMatch(queryDescriptor);
+
+  const person = all.find(p => p.id === match.label) || null;
+  return { person, dist: match.distance };
+}
+
+// ── Show result ───────────────────────────────────────────────────
+function showResult(person, distance) {
+  const card = document.getElementById('result-card');
+  card.classList.add('show');
+  const meter = document.getElementById('distance-meter');
+  meter.style.display = 'block';
+
+  if (person && distance < MATCH_THRESHOLD) {
+    document.getElementById('result-header').textContent = 'Match Found';
+    document.getElementById('result-name').textContent   = person.name;
+    document.getElementById('result-photo').src          = person.photoDataUrl;
+    document.getElementById('result-meta').textContent   =
+      `${person.shotCount || 1} reference shot${(person.shotCount||1)>1?'s':''} · Registered: ${person.date}`;
+
+    const simPct  = Math.round((1 - distance) * 100);
+    const barPct  = Math.max(0, Math.min(100, simPct));
+    document.getElementById('distance-pct').textContent = simPct + '%';
+    document.getElementById('distance-bar').style.width      = barPct + '%';
+    document.getElementById('distance-bar').style.background = distance < 0.35 ? 'var(--green)' : 'var(--gold)';
+
+    const b = document.getElementById('result-badge');
+    b.textContent = distance < 0.35 ? 'High Confidence' : 'Likely Match';
+    b.className   = 'match-score ' + (distance < 0.35 ? 'high' : 'low');
+    showToast(`Identified: ${person.name}`, 'success');
+  } else {
+    document.getElementById('result-header').textContent = 'No Match Found';
+    document.getElementById('result-name').textContent   = 'Unknown Person';
+    document.getElementById('result-photo').src          = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><rect width="80" height="80" fill="#1c1c28"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="32" fill="#7a7870">?</text></svg>');
+    document.getElementById('result-meta').textContent   = 'Not in vault — register this person first';
+    const distDisplay = distance < 10 ? Math.round((1-Math.min(distance,1))*100) + '%' : '0%';
+    document.getElementById('distance-pct').textContent = distDisplay;
+    document.getElementById('distance-bar').style.width  = '0%';
+    const b = document.getElementById('result-badge');
+    b.textContent = 'Unknown'; b.className = 'match-score none';
+    showToast('Person not found in vault', 'error');
+  }
+}
+
+// ── Identify (camera) ─────────────────────────────────────────────
+async function identifyPerson() {
+  const video = document.getElementById('rec-video');
+  if (!video.srcObject) { showToast('Start the camera first', 'info'); return; }
+  const all = await dbGetAll();
+  if (!all.length) { showToast('Vault is empty — register someone first', 'info'); return; }
+  showToast('Scanning…', 'info');
+  const result = await faceapi
+    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416 }))
+    .withFaceLandmarks(true).withFaceDescriptor();
+  if (!result) { showToast('No face detected — center the face', 'error'); return; }
+  const { person, dist } = await findBestMatch(result.descriptor);
+  showResult(person, dist);
+}
+
+// ── Upload ────────────────────────────────────────────────────────
+function setRegMode(m) {
+  const c = m === 'camera';
+  document.getElementById('reg-camera-mode').style.display = c ? '' : 'none';
+  document.getElementById('reg-upload-mode').style.display = c ? 'none' : '';
+  document.getElementById('reg-tab-camera').classList.toggle('active', c);
+  document.getElementById('reg-tab-upload').classList.toggle('active', !c);
+  document.getElementById('reg-name-wrap').style.display = 'none';
+  document.getElementById('duplicate-warn').classList.remove('show');
+  if (!c) { capturedShots = []; updateStrip(); }
+}
+
+function setRecMode(m) {
+  const c = m === 'camera';
+  document.getElementById('rec-camera-mode').style.display = c ? '' : 'none';
+  document.getElementById('rec-upload-mode').style.display = c ? 'none' : '';
+  document.getElementById('rec-tab-camera').classList.toggle('active', c);
+  document.getElementById('rec-tab-upload').classList.toggle('active', !c);
+  document.getElementById('result-card').classList.remove('show');
+}
+
+function handleDragOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add('drag-over'); }
+function handleDragLeave(id)   { document.getElementById(id).classList.remove('drag-over'); }
+function handleDrop(e, prefix) {
+  e.preventDefault();
+  document.getElementById(prefix+'-upload-zone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadUploadedFile(f, prefix);
+  else showToast('Please drop an image file', 'error');
+}
+function handleFileSelect(e, prefix) { const f = e.target.files[0]; if (f) loadUploadedFile(f, prefix); }
+
+function loadUploadedFile(file, prefix) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const url = e.target.result;
+    document.getElementById(prefix+'-upload-img').src = url;
+    document.getElementById(prefix+'-upload-filename').textContent = file.name;
+    document.getElementById(prefix+'-upload-preview').classList.add('show');
+    if (prefix === 'reg') { regUploadDataUrl = url; document.getElementById('reg-analyze-btn').disabled = false; }
+    else                  { recUploadDataUrl = url; document.getElementById('rec-upload-identify-btn').disabled = false; }
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearUpload(prefix) {
+  document.getElementById(prefix+'-upload-img').src = '';
+  document.getElementById(prefix+'-upload-preview').classList.remove('show');
+  document.getElementById(prefix+'-file-input').value = '';
+  if (prefix === 'reg') {
+    regUploadDataUrl = null;
+    document.getElementById('reg-analyze-btn').disabled = true;
+    document.getElementById('reg-name-wrap').style.display = 'none';
+    document.getElementById('duplicate-warn').classList.remove('show');
+    capturedShots = [];
+  } else {
+    recUploadDataUrl = null;
+    document.getElementById('rec-upload-identify-btn').disabled = true;
+    document.getElementById('result-card').classList.remove('show');
+  }
+}
+
+async function analyzeUpload() {
+  if (!regUploadDataUrl) { showToast('Upload a photo first', 'info'); return; }
+  showToast('Analyzing face in photo…', 'info');
+  const img = await loadImg(regUploadDataUrl);
+  const result = await faceapi
+    .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.3 }))
+    .withFaceLandmarks(true).withFaceDescriptor();
+  if (!result) { showToast('No face detected — try a clearer front-facing photo', 'error'); return; }
+
+  const b = result.detection.box, pad = 40;
+  const tmp = document.createElement('canvas');
+  tmp.width  = Math.min(b.width+pad*2,  img.naturalWidth);
+  tmp.height = Math.min(b.height+pad*2, img.naturalHeight);
+  tmp.getContext('2d').drawImage(img, Math.max(0,b.x-pad), Math.max(0,b.y-pad), tmp.width, tmp.height, 0, 0, tmp.width, tmp.height);
+  const photoDataUrl = tmp.toDataURL('image/jpeg', 0.85);
+
+  capturedShots = [{ descriptor: Array.from(result.descriptor), photoDataUrl }];
+  showToast('Face found! Enter a name to save', 'info');
+  document.getElementById('reg-name-wrap').style.display = 'flex';
+  document.getElementById('reg-name-input').focus();
+  document.getElementById('strip-progress').textContent = '1 shot from upload';
+}
+
+async function identifyFromUpload() {
+  if (!recUploadDataUrl) { showToast('Upload a photo first', 'info'); return; }
+  const all = await dbGetAll();
+  if (!all.length) { showToast('Vault is empty — register someone first', 'info'); return; }
+  showToast('Scanning uploaded photo…', 'info');
+  const img = await loadImg(recUploadDataUrl);
+  const result = await faceapi
+    .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.3 }))
+    .withFaceLandmarks(true).withFaceDescriptor();
+  if (!result) { showToast('No face detected — try a clearer photo', 'error'); return; }
+  const { person, dist } = await findBestMatch(result.descriptor);
+  showResult(person, dist);
+}
+
+function loadImg(src) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+
+// ── Gallery ───────────────────────────────────────────────────────
+async function renderGallery() {
+  const all  = await dbGetAll();
+  const grid = document.getElementById('gallery-grid');
+  document.getElementById('gallery-count').textContent = `${all.length} person${all.length!==1?'s':''}`;
+  if (!all.length) {
+    grid.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Your vault is empty.<br>Register a person to get started.</p></div>`;
+    return;
+  }
+  grid.innerHTML = all.map(p => `
+    <div class="gallery-card">
+      <img src="${p.photoDataUrl}" alt="${p.name}" loading="lazy" />
+      <button class="gallery-card-del" onclick="deletePerson('${p.id}')">✕</button>
+      <div class="gallery-card-info">
+        <div class="gallery-card-name">${p.name}</div>
+        <div class="gallery-card-date">${p.date}</div>
+        <div class="gallery-card-shots">${p.shotCount || 1} reference shot${(p.shotCount||1)>1?'s':''}</div>
+      </div>
+    </div>`).join('');
+}
+
+async function deletePerson(id) { await dbDelete(id); showToast('Removed from vault', 'info'); renderGallery(); }
+async function clearAllPersons() {
+  if (!confirm('Delete ALL persons? This cannot be undone.')) return;
+  await dbClear(); showToast('Vault cleared', 'info'); renderGallery();
+}
+
+// ── Nav ───────────────────────────────────────────────────────────
+function switchPanel(name) {
+  // Stop cameras not in use
+  const modeForPanel = { register: 'reg', recognize: 'rec' };
+  Object.entries(modeForPanel).forEach(([panel, mode]) => {
+    if (panel !== name) stopCamera(mode);
+  });
+
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.bottom-nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  currentPanel = name;
+  if (name === 'gallery')   renderGallery();
+  if (name === 'recognize') document.getElementById('result-card').classList.remove('show');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── PWA Install ───────────────────────────────────────────────────
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); deferredPrompt = e;
+  document.getElementById('install-banner').classList.add('show');
+});
+async function installApp() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  document.getElementById('install-banner').classList.remove('show');
+  if (outcome === 'accepted') showToast('FaceVault installed!', 'success');
+}
+function dismissInstall() { document.getElementById('install-banner').classList.remove('show'); }
+
+// ── Service Worker ────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW reg failed:', e));
+}
+
+// ── Boot ──────────────────────────────────────────────────────────
+init().catch(e => {
+  document.getElementById('load-msg').textContent = 'Error — check internet connection';
+  console.error(e);
+});
+</script>
+</body>
+</html>
